@@ -1,7 +1,8 @@
+require('dotenv/config');
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { initializeDatabase, closeDatabase } = require('./database');
+const { prisma, connectPrisma, disconnectPrisma } = require('./prisma');
 
 // Importar rotas
 const projetosRoutes = require('./routes/projetos');
@@ -12,8 +13,20 @@ const subtarefasRoutes = require('./routes/subtarefas');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Configuração CORS
+const corsOptions = {
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://172.16.20.217:5173',
+    process.env.CORS_ORIGIN || 'https://main.d2ixqhqhqhqhqh.amplifyapp.com'
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
 // Middlewares
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -23,8 +36,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Inicializar banco de dados
-initializeDatabase();
+// Conectar ao banco de dados
+connectPrisma();
 
 // Rotas da API
 app.use('/api/projetos', projetosRoutes);
@@ -33,12 +46,24 @@ app.use('/api/atividades', atividadesRoutes);
 app.use('/api/subtarefas', subtarefasRoutes);
 
 // Rota de teste
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'API do Painel de Projetos funcionando!',
-    timestamp: new Date().toISOString()
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    // Testar conexão com o banco
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ 
+      status: 'OK', 
+      message: 'API do Painel de Projetos funcionando!',
+      database: 'Conectado',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      status: 'ERROR', 
+      message: 'Erro na conexão com o banco de dados',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Middleware de tratamento de erros
@@ -56,25 +81,26 @@ app.use('*', (req, res) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📊 API disponível em: http://localhost:${PORT}/api`);
-  console.log(`🌐 API acessível na rede em: http://172.16.20.217:${PORT}/api`);
+  console.log(`🌐 CORS configurado para: ${process.env.CORS_ORIGIN || 'localhost'}`);
   console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🗄️  Banco de dados: PostgreSQL via Prisma`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('\n🛑 Encerrando servidor...');
-  server.close(() => {
+  server.close(async () => {
     console.log('✅ Servidor encerrado.');
-    closeDatabase();
+    await disconnectPrisma();
     process.exit(0);
   });
 });
 
 process.on('SIGTERM', () => {
   console.log('\n🛑 Encerrando servidor...');
-  server.close(() => {
+  server.close(async () => {
     console.log('✅ Servidor encerrado.');
-    closeDatabase();
+    await disconnectPrisma();
     process.exit(0);
   });
 });

@@ -1,0 +1,104 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Projeto {
+  id              Int      @id @default(autoincrement())
+  codigo          String   @unique
+  nome            String
+  descricao       String?
+  prioridade      String?
+  responsaveis    String?
+  inicioPlaneado  String?
+  fimPlaneado     String?
+  status          String   @default("Ativo")
+  progresso       Int      @default(0)
+  aprovacao       Boolean  @default(false)
+  observacoes     String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relacionamento com atividades
+  atividades      Atividade[]
+
+  @@map("projetos")
+}
+
+model Pessoa {
+  id           Int      @id @default(autoincrement())
+  codigo       String   @unique
+  nome         String
+  email        String?
+  telefone     String?
+  cargo        String?
+  departamento String?
+  status       String   @default("Ativo")
+  ativo        Boolean  @default(true)
+  observacoes  String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("pessoas")
+}
+
+model Atividade {
+  id                   Int      @id @default(autoincrement())
+  codigo               String   @unique
+  codigoProjeto        String   @map("codigoProjeto")
+  projeto              String
+  responsavelProjeto   String?  @map("responsavelProjeto")
+  inicioPlaneado       String?  @map("inicioPlaneado")
+  fimPlaneado          String?  @map("fimPlaneado")
+  tarefa               String
+  responsaveisTarefa   String?  @map("responsaveisTarefa")
+  diasPrevistos        Int      @default(0) @map("diasPrevistos")
+  dataInicio           String?  @map("dataInicio")
+  previsaoEntrega      String?  @map("previsaoEntrega")
+  status               String   @default("Não Iniciado")
+  statusPrazo          String   @default("Dentro do Prazo") @map("statusPrazo")
+  progresso            Int      @default(0)
+  qtdHoras             Int      @default(0) @map("qtdHoras")
+  horasUtilizadas      Int      @default(0) @map("horasUtilizadas")
+  diferencaHoras       Int      @default(0) @map("diferencaHoras")
+  observacoes          String?
+  nome                 String?
+  responsavel          String?
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  
+  // Relacionamento com projeto (opcional, baseado no codigoProjeto)
+  projeto_rel          Projeto? @relation(fields: [codigoProjeto], references: [codigo])
+  
+  // Relacionamento com subtarefas
+  subtarefas           Subtarefa[]
+
+  @@map("atividades")
+}
+
+model Subtarefa {
+  id           Int       @id @default(autoincrement())
+  codigo       String    @unique
+  atividadeId  Int       @map("atividadeId")
+  nome         String
+  responsavel  String?
+  dataInicio   String?   @map("dataInicio")
+  dataFim      String?   @map("dataFim")
+  status       String    @default("Pendente")
+  progresso    Int       @default(0)
+  observacoes  String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  
+  // Relacionamento com atividade
+  atividade    Atividade @relation(fields: [atividadeId], references: [id])
+
+  @@map("subtarefas")
+}

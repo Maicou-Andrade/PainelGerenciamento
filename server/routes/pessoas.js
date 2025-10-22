@@ -1,43 +1,45 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../database');
+const { prisma } = require('../prisma');
 
 // GET - Listar todas as pessoas
-router.get('/', (req, res) => {
-  const sql = 'SELECT * FROM pessoas ORDER BY created_at DESC';
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar pessoas:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-    res.json(rows);
-  });
+router.get('/', async (req, res) => {
+  try {
+    const pessoas = await prisma.pessoa.findMany({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(pessoas);
+  } catch (error) {
+    console.error('Erro ao buscar pessoas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // GET - Buscar pessoa por ID
-router.get('/:id', (req, res) => {
-  const sql = 'SELECT * FROM pessoas WHERE id = ?';
-  
-  db.get(sql, [req.params.id], (err, row) => {
-    if (err) {
-      console.error('Erro ao buscar pessoa:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
+router.get('/:id', async (req, res) => {
+  try {
+    const pessoa = await prisma.pessoa.findUnique({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
     
-    if (!row) {
+    if (!pessoa) {
       res.status(404).json({ error: 'Pessoa não encontrada' });
       return;
     }
     
-    res.json(row);
-  });
+    res.json(pessoa);
+  } catch (error) {
+    console.error('Erro ao buscar pessoa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // POST - Criar nova pessoa
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     codigo,
     nome,
@@ -55,51 +57,37 @@ router.post('/', (req, res) => {
     return;
   }
 
-  const sql = `INSERT INTO pessoas 
-    (codigo, nome, email, telefone, cargo, departamento, status, ativo, observacoes, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
-
-  const params = [
-    codigo,
-    nome,
-    email || '',
-    telefone || '',
-    cargo || '',
-    departamento || '',
-    status || 'Ativo',
-    ativo !== undefined ? ativo : 1,
-    observacoes || ''
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao criar pessoa:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da pessoa já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const pessoa = await prisma.pessoa.create({
+      data: {
+        codigo,
+        nome,
+        email: email || '',
+        telefone: telefone || '',
+        cargo: cargo || '',
+        departamento: departamento || '',
+        status: status || 'Ativo',
+        ativo: ativo !== undefined ? ativo : true,
+        observacoes: observacoes || ''
       }
-      return;
-    }
+    });
 
     res.status(201).json({
-      id: this.lastID,
-      codigo,
-      nome,
-      email,
-      telefone,
-      cargo,
-      departamento,
-      status,
-      ativo: ativo !== undefined ? ativo : 1,
-      observacoes,
+      ...pessoa,
       message: 'Pessoa criada com sucesso'
     });
-  });
+  } catch (error) {
+    console.error('Erro ao criar pessoa:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da pessoa já existe' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // PUT - Atualizar pessoa
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   const {
     codigo,
     nome,
@@ -117,63 +105,55 @@ router.put('/:id', (req, res) => {
     return;
   }
 
-  const sql = `UPDATE pessoas SET 
-    codigo = ?, nome = ?, email = ?, telefone = ?, 
-    cargo = ?, departamento = ?, status = ?, ativo = ?, observacoes = ?, 
-    updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`;
-
-  const params = [
-    codigo,
-    nome,
-    email || '',
-    telefone || '',
-    cargo || '',
-    departamento || '',
-    status || 'Ativo',
-    ativo !== undefined ? ativo : 1,
-    observacoes || '',
-    req.params.id
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao atualizar pessoa:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da pessoa já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const pessoa = await prisma.pessoa.update({
+      where: {
+        id: parseInt(req.params.id)
+      },
+      data: {
+        codigo,
+        nome,
+        email: email || '',
+        telefone: telefone || '',
+        cargo: cargo || '',
+        departamento: departamento || '',
+        status: status || 'Ativo',
+        ativo: ativo !== undefined ? ativo : true,
+        observacoes: observacoes || ''
       }
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Pessoa não encontrada' });
-      return;
-    }
+    });
 
     res.json({ message: 'Pessoa atualizada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao atualizar pessoa:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da pessoa já existe' });
+    } else if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Pessoa não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // DELETE - Deletar pessoa
-router.delete('/:id', (req, res) => {
-  const sql = 'DELETE FROM pessoas WHERE id = ?';
-  
-  db.run(sql, [req.params.id], function(err) {
-    if (err) {
-      console.error('Erro ao deletar pessoa:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Pessoa não encontrada' });
-      return;
-    }
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.pessoa.delete({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
 
     res.json({ message: 'Pessoa deletada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao deletar pessoa:', error);
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Pessoa não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 module.exports = router;

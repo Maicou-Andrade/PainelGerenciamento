@@ -1,57 +1,63 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../database');
+const { prisma } = require('../prisma');
 
 // GET - Listar todas as subtarefas
-router.get('/', (req, res) => {
-  const sql = 'SELECT * FROM subtarefas ORDER BY created_at DESC';
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar subtarefas:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-    res.json(rows);
-  });
+router.get('/', async (req, res) => {
+  try {
+    const subtarefas = await prisma.subtarefa.findMany({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(subtarefas);
+  } catch (error) {
+    console.error('Erro ao buscar subtarefas:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // GET - Buscar subtarefas por atividade
-router.get('/atividade/:atividadeId', (req, res) => {
-  const sql = 'SELECT * FROM subtarefas WHERE atividadeId = ? ORDER BY created_at DESC';
-  
-  db.all(sql, [req.params.atividadeId], (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar subtarefas da atividade:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-    res.json(rows);
-  });
+router.get('/atividade/:atividadeId', async (req, res) => {
+  try {
+    const subtarefas = await prisma.subtarefa.findMany({
+      where: {
+        atividadeId: parseInt(req.params.atividadeId)
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(subtarefas);
+  } catch (error) {
+    console.error('Erro ao buscar subtarefas da atividade:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // GET - Buscar subtarefa por ID
-router.get('/:id', (req, res) => {
-  const sql = 'SELECT * FROM subtarefas WHERE id = ?';
-  
-  db.get(sql, [req.params.id], (err, row) => {
-    if (err) {
-      console.error('Erro ao buscar subtarefa:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
+router.get('/:id', async (req, res) => {
+  try {
+    const subtarefa = await prisma.subtarefa.findUnique({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
     
-    if (!row) {
+    if (!subtarefa) {
       res.status(404).json({ error: 'Subtarefa não encontrada' });
       return;
     }
     
-    res.json(row);
-  });
+    res.json(subtarefa);
+  } catch (error) {
+    console.error('Erro ao buscar subtarefa:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // POST - Criar nova subtarefa
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     codigo,
     atividadeId,
@@ -69,51 +75,37 @@ router.post('/', (req, res) => {
     return;
   }
 
-  const sql = `INSERT INTO subtarefas 
-    (codigo, atividadeId, nome, responsavel, dataInicio, dataFim, status, progresso, observacoes, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
-
-  const params = [
-    codigo,
-    atividadeId,
-    nome,
-    responsavel || '',
-    dataInicio || '',
-    dataFim || '',
-    status || 'Pendente',
-    progresso || 0,
-    observacoes || ''
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao criar subtarefa:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da subtarefa já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const subtarefa = await prisma.subtarefa.create({
+      data: {
+        codigo,
+        atividadeId: parseInt(atividadeId),
+        nome,
+        responsavel: responsavel || '',
+        dataInicio: dataInicio || '',
+        dataFim: dataFim || '',
+        status: status || 'Pendente',
+        progresso: progresso || 0,
+        observacoes: observacoes || ''
       }
-      return;
-    }
+    });
 
     res.status(201).json({
-      id: this.lastID,
-      codigo,
-      atividadeId,
-      nome,
-      responsavel,
-      dataInicio,
-      dataFim,
-      status,
-      progresso,
-      observacoes,
+      ...subtarefa,
       message: 'Subtarefa criada com sucesso'
     });
-  });
+  } catch (error) {
+    console.error('Erro ao criar subtarefa:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da subtarefa já existe' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // PUT - Atualizar subtarefa
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   const {
     codigo,
     atividadeId,
@@ -131,63 +123,55 @@ router.put('/:id', (req, res) => {
     return;
   }
 
-  const sql = `UPDATE subtarefas SET 
-    codigo = ?, atividadeId = ?, nome = ?, responsavel = ?, 
-    dataInicio = ?, dataFim = ?, status = ?, progresso = ?, 
-    observacoes = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`;
-
-  const params = [
-    codigo,
-    atividadeId,
-    nome,
-    responsavel || '',
-    dataInicio || '',
-    dataFim || '',
-    status || 'Pendente',
-    progresso || 0,
-    observacoes || '',
-    req.params.id
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao atualizar subtarefa:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da subtarefa já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const subtarefa = await prisma.subtarefa.update({
+      where: {
+        id: parseInt(req.params.id)
+      },
+      data: {
+        codigo,
+        atividadeId: parseInt(atividadeId),
+        nome,
+        responsavel: responsavel || '',
+        dataInicio: dataInicio || '',
+        dataFim: dataFim || '',
+        status: status || 'Pendente',
+        progresso: progresso || 0,
+        observacoes: observacoes || ''
       }
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Subtarefa não encontrada' });
-      return;
-    }
+    });
 
     res.json({ message: 'Subtarefa atualizada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao atualizar subtarefa:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da subtarefa já existe' });
+    } else if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Subtarefa não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // DELETE - Deletar subtarefa
-router.delete('/:id', (req, res) => {
-  const sql = 'DELETE FROM subtarefas WHERE id = ?';
-  
-  db.run(sql, [req.params.id], function(err) {
-    if (err) {
-      console.error('Erro ao deletar subtarefa:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Subtarefa não encontrada' });
-      return;
-    }
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.subtarefa.delete({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
 
     res.json({ message: 'Subtarefa deletada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao deletar subtarefa:', error);
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Subtarefa não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 module.exports = router;

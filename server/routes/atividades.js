@@ -1,43 +1,45 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../database');
+const { prisma } = require('../prisma');
 
 // GET - Listar todas as atividades
-router.get('/', (req, res) => {
-  const sql = 'SELECT * FROM atividades ORDER BY created_at DESC';
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar atividades:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-    res.json(rows);
-  });
+router.get('/', async (req, res) => {
+  try {
+    const atividades = await prisma.atividade.findMany({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(atividades);
+  } catch (error) {
+    console.error('Erro ao buscar atividades:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // GET - Buscar atividade por ID
-router.get('/:id', (req, res) => {
-  const sql = 'SELECT * FROM atividades WHERE id = ?';
-  
-  db.get(sql, [req.params.id], (err, row) => {
-    if (err) {
-      console.error('Erro ao buscar atividade:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
+router.get('/:id', async (req, res) => {
+  try {
+    const atividade = await prisma.atividade.findUnique({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
     
-    if (!row) {
+    if (!atividade) {
       res.status(404).json({ error: 'Atividade não encontrada' });
       return;
     }
     
-    res.json(row);
-  });
+    res.json(atividade);
+  } catch (error) {
+    console.error('Erro ao buscar atividade:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // POST - Criar nova atividade
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     codigo,
     codigoProjeto,
@@ -66,76 +68,48 @@ router.post('/', (req, res) => {
     return;
   }
 
-  const sql = `INSERT INTO atividades 
-    (codigo, codigoProjeto, projeto, responsavelProjeto, inicioPlaneado, fimPlaneado,
-     tarefa, responsaveisTarefa, diasPrevistos, dataInicio, previsaoEntrega, status,
-     statusPrazo, progresso, qtdHoras, horasUtilizadas, diferencaHoras, observacoes,
-     nome, responsavel, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
-
-  const params = [
-    codigo,
-    codigoProjeto || '',
-    projeto || '',
-    responsavelProjeto || '',
-    inicioPlaneado || '',
-    fimPlaneado || '',
-    tarefa,
-    responsaveisTarefa || '',
-    diasPrevistos || 0,
-    dataInicio || '',
-    previsaoEntrega || '',
-    status || 'Não Iniciado',
-    statusPrazo || 'Dentro do Prazo',
-    progresso || 0,
-    qtdHoras || 0,
-    horasUtilizadas || 0,
-    diferencaHoras || 0,
-    observacoes || '',
-    nome || '',
-    responsavel || ''
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao criar atividade:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da atividade já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const atividade = await prisma.atividade.create({
+      data: {
+        codigo,
+        codigoProjeto: codigoProjeto || '',
+        projeto: projeto || '',
+        responsavelProjeto: responsavelProjeto || '',
+        inicioPlaneado: inicioPlaneado || '',
+        fimPlaneado: fimPlaneado || '',
+        tarefa,
+        responsaveisTarefa: responsaveisTarefa || '',
+        diasPrevistos: diasPrevistos || 0,
+        dataInicio: dataInicio || '',
+        previsaoEntrega: previsaoEntrega || '',
+        status: status || 'Não Iniciado',
+        statusPrazo: statusPrazo || 'Dentro do Prazo',
+        progresso: progresso || 0,
+        qtdHoras: qtdHoras || 0,
+        horasUtilizadas: horasUtilizadas || 0,
+        diferencaHoras: diferencaHoras || 0,
+        observacoes: observacoes || '',
+        nome: nome || '',
+        responsavel: responsavel || ''
       }
-      return;
-    }
+    });
 
     res.status(201).json({
-      id: this.lastID,
-      codigo,
-      codigoProjeto,
-      projeto,
-      responsavelProjeto,
-      inicioPlaneado,
-      fimPlaneado,
-      tarefa,
-      responsaveisTarefa,
-      diasPrevistos,
-      dataInicio,
-      previsaoEntrega,
-      status,
-      statusPrazo,
-      progresso,
-      qtdHoras,
-      horasUtilizadas,
-      diferencaHoras,
-      observacoes,
-      nome,
-      responsavel,
+      ...atividade,
       message: 'Atividade criada com sucesso'
     });
-  });
+  } catch (error) {
+    console.error('Erro ao criar atividade:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da atividade já existe' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // PUT - Atualizar atividade
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   const {
     codigo,
     codigoProjeto,
@@ -164,77 +138,66 @@ router.put('/:id', (req, res) => {
     return;
   }
 
-  const sql = `UPDATE atividades SET 
-    codigo = ?, codigoProjeto = ?, projeto = ?, responsavelProjeto = ?, 
-    inicioPlaneado = ?, fimPlaneado = ?, tarefa = ?, responsaveisTarefa = ?,
-    diasPrevistos = ?, dataInicio = ?, previsaoEntrega = ?, status = ?,
-    statusPrazo = ?, progresso = ?, qtdHoras = ?, horasUtilizadas = ?,
-    diferencaHoras = ?, observacoes = ?, nome = ?, responsavel = ?,
-    updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`;
-
-  const params = [
-    codigo,
-    codigoProjeto || '',
-    projeto || '',
-    responsavelProjeto || '',
-    inicioPlaneado || '',
-    fimPlaneado || '',
-    tarefa,
-    responsaveisTarefa || '',
-    diasPrevistos || 0,
-    dataInicio || '',
-    previsaoEntrega || '',
-    status || 'Não Iniciado',
-    statusPrazo || 'Dentro do Prazo',
-    progresso || 0,
-    qtdHoras || 0,
-    horasUtilizadas || 0,
-    diferencaHoras || 0,
-    observacoes || '',
-    nome || '',
-    responsavel || '',
-    req.params.id
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao atualizar atividade:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código da atividade já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const atividade = await prisma.atividade.update({
+      where: {
+        id: parseInt(req.params.id)
+      },
+      data: {
+        codigo,
+        codigoProjeto: codigoProjeto || '',
+        projeto: projeto || '',
+        responsavelProjeto: responsavelProjeto || '',
+        inicioPlaneado: inicioPlaneado || '',
+        fimPlaneado: fimPlaneado || '',
+        tarefa,
+        responsaveisTarefa: responsaveisTarefa || '',
+        diasPrevistos: diasPrevistos || 0,
+        dataInicio: dataInicio || '',
+        previsaoEntrega: previsaoEntrega || '',
+        status: status || 'Não Iniciado',
+        statusPrazo: statusPrazo || 'Dentro do Prazo',
+        progresso: progresso || 0,
+        qtdHoras: qtdHoras || 0,
+        horasUtilizadas: horasUtilizadas || 0,
+        diferencaHoras: diferencaHoras || 0,
+        observacoes: observacoes || '',
+        nome: nome || '',
+        responsavel: responsavel || ''
       }
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Atividade não encontrada' });
-      return;
-    }
+    });
 
     res.json({ message: 'Atividade atualizada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao atualizar atividade:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código da atividade já existe' });
+    } else if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Atividade não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // DELETE - Deletar atividade
-router.delete('/:id', (req, res) => {
-  const sql = 'DELETE FROM atividades WHERE id = ?';
-  
-  db.run(sql, [req.params.id], function(err) {
-    if (err) {
-      console.error('Erro ao deletar atividade:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Atividade não encontrada' });
-      return;
-    }
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.atividade.delete({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
 
     res.json({ message: 'Atividade deletada com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao deletar atividade:', error);
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Atividade não encontrada' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 module.exports = router;

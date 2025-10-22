@@ -1,43 +1,45 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../database');
+const { prisma } = require('../prisma');
 
 // GET - Listar todos os projetos
-router.get('/', (req, res) => {
-  const sql = 'SELECT * FROM projetos ORDER BY created_at DESC';
-  
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      console.error('Erro ao buscar projetos:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-    res.json(rows);
-  });
+router.get('/', async (req, res) => {
+  try {
+    const projetos = await prisma.projeto.findMany({
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+    res.json(projetos);
+  } catch (error) {
+    console.error('Erro ao buscar projetos:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // GET - Buscar projeto por ID
-router.get('/:id', (req, res) => {
-  const sql = 'SELECT * FROM projetos WHERE id = ?';
-  
-  db.get(sql, [req.params.id], (err, row) => {
-    if (err) {
-      console.error('Erro ao buscar projeto:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
+router.get('/:id', async (req, res) => {
+  try {
+    const projeto = await prisma.projeto.findUnique({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
     
-    if (!row) {
+    if (!projeto) {
       res.status(404).json({ error: 'Projeto não encontrado' });
       return;
     }
     
-    res.json(row);
-  });
+    res.json(projeto);
+  } catch (error) {
+    console.error('Erro ao buscar projeto:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
 });
 
 // POST - Criar novo projeto
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const {
     codigo,
     nome,
@@ -57,54 +59,39 @@ router.post('/', (req, res) => {
     return;
   }
 
-  const sql = `INSERT INTO projetos 
-    (codigo, nome, descricao, prioridade, responsaveis, inicioPlaneado, fimPlaneado, status, progresso, observacoes, aprovacao, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`;
-
-  const params = [
-    codigo,
-    nome,
-    descricao || '',
-    prioridade || '',
-    responsaveis || '',
-    inicioPlaneado || '',
-    fimPlaneado || '',
-    status || 'Ativo',
-    progresso || 0,
-    observacoes || '',
-    aprovacao || false
-  ];
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao criar projeto:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código do projeto já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const projeto = await prisma.projeto.create({
+      data: {
+        codigo,
+        nome,
+        descricao: descricao || '',
+        prioridade: prioridade || '',
+        responsaveis: responsaveis || '',
+        inicioPlaneado: inicioPlaneado || '',
+        fimPlaneado: fimPlaneado || '',
+        status: status || 'Ativo',
+        progresso: progresso || 0,
+        observacoes: observacoes || '',
+        aprovacao: aprovacao || false
       }
-      return;
-    }
+    });
 
     res.status(201).json({
-      id: this.lastID,
-      codigo,
-      nome,
-      descricao,
-      prioridade,
-      responsaveis,
-      inicioPlaneado,
-      fimPlaneado,
-      status,
-      progresso,
-      observacoes,
+      ...projeto,
       message: 'Projeto criado com sucesso'
     });
-  });
+  } catch (error) {
+    console.error('Erro ao criar projeto:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código do projeto já existe' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // PUT - Atualizar projeto
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   console.log('🔍 PUT /api/projetos/:id - Body recebido:', req.body);
   console.log('🔍 Campo aprovacao recebido:', req.body.aprovacao, 'Tipo:', typeof req.body.aprovacao);
   
@@ -127,68 +114,58 @@ router.put('/:id', (req, res) => {
     return;
   }
 
-  const sql = `UPDATE projetos SET 
-    codigo = ?, nome = ?, descricao = ?, prioridade = ?, responsaveis = ?, inicioPlaneado = ?, 
-    fimPlaneado = ?, status = ?, progresso = ?, observacoes = ?, aprovacao = ?, 
-    updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`;
-
-  const params = [
-    codigo,
-    nome,
-    descricao || '',
-    prioridade || '',
-    responsaveis || '',
-    inicioPlaneado || '',
-    fimPlaneado || '',
-    status || 'Ativo',
-    progresso || 0,
-    observacoes || '',
-    aprovacao || false,
-    req.params.id
-  ];
-
-  console.log('🔍 Parâmetros da query:', params);
-  console.log('🔍 Valor aprovacao nos parâmetros:', params[10], 'Tipo:', typeof params[10]);
-
-  db.run(sql, params, function(err) {
-    if (err) {
-      console.error('Erro ao atualizar projeto:', err.message);
-      if (err.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Código do projeto já existe' });
-      } else {
-        res.status(500).json({ error: 'Erro interno do servidor' });
+  try {
+    const projeto = await prisma.projeto.update({
+      where: {
+        id: parseInt(req.params.id)
+      },
+      data: {
+        codigo,
+        nome,
+        descricao: descricao || '',
+        prioridade: prioridade || '',
+        responsaveis: responsaveis || '',
+        inicioPlaneado: inicioPlaneado || '',
+        fimPlaneado: fimPlaneado || '',
+        status: status || 'Ativo',
+        progresso: progresso || 0,
+        observacoes: observacoes || '',
+        aprovacao: aprovacao || false
       }
-      return;
-    }
+    });
 
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Projeto não encontrado' });
-      return;
-    }
-
+    console.log('🔍 Projeto atualizado:', projeto);
     res.json({ message: 'Projeto atualizado com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao atualizar projeto:', error);
+    if (error.code === 'P2002') {
+      res.status(400).json({ error: 'Código do projeto já existe' });
+    } else if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Projeto não encontrado' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 // DELETE - Deletar projeto
-router.delete('/:id', (req, res) => {
-  const sql = 'DELETE FROM projetos WHERE id = ?';
-  
-  db.run(sql, [req.params.id], function(err) {
-    if (err) {
-      console.error('Erro ao deletar projeto:', err.message);
-      res.status(500).json({ error: 'Erro interno do servidor' });
-      return;
-    }
-
-    if (this.changes === 0) {
-      res.status(404).json({ error: 'Projeto não encontrado' });
-      return;
-    }
+router.delete('/:id', async (req, res) => {
+  try {
+    await prisma.projeto.delete({
+      where: {
+        id: parseInt(req.params.id)
+      }
+    });
 
     res.json({ message: 'Projeto deletado com sucesso' });
-  });
+  } catch (error) {
+    console.error('Erro ao deletar projeto:', error);
+    if (error.code === 'P2025') {
+      res.status(404).json({ error: 'Projeto não encontrado' });
+    } else {
+      res.status(500).json({ error: 'Erro interno do servidor' });
+    }
+  }
 });
 
 module.exports = router;
